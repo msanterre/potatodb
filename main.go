@@ -2,17 +2,15 @@ package main
 
 import (
 	"encoding/json"
-	"io"
 	"io/ioutil"
 	"log"
-	"net/http"
-	"strings"
 	"time"
 )
 
 const (
-	listenAddress = "127.0.0.1:5050"
-	dbFilepath    = "data.json"
+	webListenAddress    = "127.0.0.1:5050"
+	socketListenAddress = "127.0.0.1:5051"
+	dbFilepath          = "data.json"
 )
 
 type Database struct {
@@ -42,10 +40,8 @@ func (db *Database) Start() {
 	}()
 	defer db.Persister.Stop()
 
-	http.HandleFunc("/db/", DBMethod)
-
-	log.Printf("Listening on %s\n", listenAddress)
-	log.Fatal(http.ListenAndServe(listenAddress, nil))
+	SocketStart(socketListenAddress)
+	WebStart(webListenAddress)
 }
 
 // Saving and loading
@@ -84,53 +80,6 @@ func (db *Database) Load() {
 	log.Println("Finished loading")
 
 	db.Data = data
-}
-
-// API
-
-func Error(w http.ResponseWriter, req *http.Request, err string) {
-	io.WriteString(w, err)
-}
-
-func DBMethod(w http.ResponseWriter, req *http.Request) {
-	key := strings.TrimPrefix(req.RequestURI, "/db/")
-
-	if key == "" {
-		NotFoundError(w)
-		return
-	}
-
-	switch req.Method {
-	case "GET":
-		if value, ok := DB.Data[key]; ok {
-			io.WriteString(w, value)
-		} else {
-			NotFoundError(w)
-		}
-	case "POST", "PUT", "PATCH":
-		body, err := ioutil.ReadAll(req.Body)
-		if err != nil {
-			ServerError(w, err)
-			log.Println(err)
-			return
-		}
-		DB.Data[key] = string(body)
-
-		w.WriteHeader(200)
-	case "DELETE":
-		delete(DB.Data, key)
-		w.WriteHeader(200)
-	}
-}
-
-func NotFoundError(w http.ResponseWriter) {
-	w.WriteHeader(404)
-	io.WriteString(w, "Not found")
-}
-
-func ServerError(w http.ResponseWriter, err error) {
-	w.WriteHeader(500)
-	io.WriteString(w, err.Error())
 }
 
 var DB *Database
