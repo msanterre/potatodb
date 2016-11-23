@@ -7,13 +7,8 @@ import (
 	"time"
 )
 
-const (
-	webListenAddress    = "127.0.0.1:5050"
-	socketListenAddress = "127.0.0.1:5051"
-	dbFilepath          = "data.json"
-)
-
 type Database struct {
+	Config    *Config
 	Data      map[string]string
 	Persister *time.Ticker
 }
@@ -21,12 +16,21 @@ type Database struct {
 func NewDB() *Database {
 	return &Database{
 		Data:      nil,
-		Persister: time.NewTicker(time.Second * 10),
+		Config:    nil,
+		Persister: nil,
 	}
 }
 
 func (db *Database) Start() {
-	db.Load()
+	config, err := LoadConfig()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	db.Config = config
+	db.Persister = time.NewTicker(time.Second * time.Duration(config.SaveFreq))
+
+	db.LoadData()
 
 	go func() {
 		for range db.Persister.C {
@@ -40,8 +44,8 @@ func (db *Database) Start() {
 	}()
 	defer db.Persister.Stop()
 
-	SocketStart(socketListenAddress)
-	WebStart(webListenAddress)
+	SocketStart(db.Config.SocketAddr)
+	WebStart(db.Config.HttpAddr)
 }
 
 // Saving and loading
@@ -51,15 +55,15 @@ func (db *Database) Save() error {
 	if err != nil {
 		return nil
 	}
-	err = ioutil.WriteFile(dbFilepath, data, 0644)
+	err = ioutil.WriteFile(db.Config.DBFilepath, data, 0644)
 
 	return err
 }
 
-func (db *Database) Load() {
-	log.Println("Attempting to load", dbFilepath)
+func (db *Database) LoadData() {
+	log.Println("Attempting to load", db.Config.DBFilepath)
 
-	content, err := ioutil.ReadFile(dbFilepath)
+	content, err := ioutil.ReadFile(db.Config.DBFilepath)
 
 	if err != nil {
 		log.Println("Could not read file. Starting from scratch")
